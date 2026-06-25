@@ -1,21 +1,52 @@
-# GalaxyServe stack. Phase 1 ships the inference service; MLflow (Phase 2),
-# Prometheus + Grafana (Phase 3) are added to this file in later phases.
+# GalaxyServe stack. Phase 1 shipped the inference service; Phase 2 adds MLflow
+# (tracking + registry). Prometheus + Grafana (Phase 3) are added later.
 
 services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.21.3
+    container_name: mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:5000/health').status==200 else sys.exit(1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - galaxynet
+
   galaxyserve:
     build:
       context: .
       dockerfile: Dockerfile
     image: galaxyserve:latest
     container_name: galaxyserve
+    depends_on:
+      mlflow:
+        condition: service_healthy
     ports:
       - "8000:8000"
     volumes:
-      # Trained weights mounted read-only — not baked into the image.
+      # Trained weights mounted read-only — fallback source if the registry is empty.
       - ./models:/app/models:ro
       # Prediction/input logs land here (used by monitoring in Phase 3).
       - ./data:/app/data
     environment:
+      # Load the Production model from the registry; fall back to the file if empty.
+      GALAXYSERVE_USE_REGISTRY: "true"
+      GALAXYSERVE_MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      GALAXYSERVE_REGISTRY_STAGE: Production
       GALAXYSERVE_WEIGHTS_PATH: /app/models/resnet18_galaxy_best.pth
       GALAXYSERVE_DEVICE: cpu
       GALAXYSERVE_LOG_LEVEL: info
@@ -29,6 +60,9 @@ services:
     restart: unless-stopped
     networks:
       - galaxynet
+
+volumes:
+  mlflow_data:
 
 networks:
   galaxynet:
