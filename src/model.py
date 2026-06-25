@@ -141,3 +141,38 @@ def predict_image(
         "confidence": float(probs[class_id].item()),
         "probabilities": {name: float(p) for name, p in zip(CLASS_NAMES, probs.tolist())},
     }
+
+
+def _format_prediction(probs_row: "torch.Tensor") -> dict:
+    class_id = int(probs_row.argmax().item())
+    return {
+        "class_id": class_id,
+        "label": CLASS_NAMES[class_id],
+        "confidence": float(probs_row[class_id].item()),
+        "probabilities": {name: float(p) for name, p in zip(CLASS_NAMES, probs_row.tolist())},
+    }
+
+
+@torch.no_grad()
+def predict_batch(
+    model: nn.Module,
+    images: list[Image.Image],
+    device: str | torch.device = "cpu",
+    transform: transforms.Compose | None = None,
+) -> list[dict]:
+    """Run a single batched forward pass over already-decoded PIL images.
+
+    Returns one prediction dict per input, in order. Raises ValueError on an
+    empty list. Decoding/validation of raw uploads is the caller's job so that
+    per-item failures can be reported without sinking the whole batch.
+    """
+    if not images:
+        raise ValueError("predict_batch received an empty image list")
+
+    device = torch.device(device)
+    transform = transform or get_eval_transform()
+
+    batch = torch.stack([transform(img.convert("RGB")) for img in images]).to(device)
+    logits = model(batch)
+    probs = torch.softmax(logits, dim=1)
+    return [_format_prediction(probs[i]) for i in range(probs.shape[0])]
