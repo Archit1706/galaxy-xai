@@ -35,6 +35,7 @@ from starlette.concurrency import run_in_threadpool
 
 from src import __version__
 from src import metrics as m
+from src import monitoring
 from src.model import load_image, predict_batch, predict_image
 from src.schemas import (
     BatchItem,
@@ -58,9 +59,45 @@ class AppState:
     model = None
     weights_loaded: bool = False
     started_at: float = 0.0
+    last_drift: dict | None = None
+    drift_task: object | None = None
 
 
 state = AppState()
+
+
+def _record_monitoring(img: Image.Image, result: dict, request_id: str | None) -> None:
+    """Log features + prediction for drift monitoring. Never breaks a prediction."""
+    settings = get_settings()
+    if not settings.monitoring_enabled:
+        return
+    try:
+        features = monitoring.extract_features(img)
+        monitoring.log_prediction(features, result, settings.prediction_log_path, request_id)
+    except Exception as exc:  # noqa: BLE001 — monitoring is best-effort
+        logger.warning("Monitoring log failed: %s", exc)
+
+
+async def _drift_loop(interval_s: int) -> None:
+    """Periodically recompute drift and update the Prometheus gauges."""
+    settings = get_settings()
+    while True:
+        await asyncio.sleep(interval_s)
+        try:
+            summary = await run_in_threadpool(
+                monitoring.run_drift_check,
+                settings.reference_path,
+                settings.prediction_log_path,
+                settings.drift_min_samples,
+            )
+            m.update_drift_metrics(summary)
+            state.last_drift = summary
+            logger.info("Drift check: share=%.3f dataset_drift=%s",
+                        summary["share_of_drifted_columns"], summary["dataset_drift"])
+        except ValueError as exc:
+            logger.info("Drift check skipped: %s", exc)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Drift check error: %s", exc)
 
 
 async def _load_model_for_serving(settings) -> tuple[object, bool]:
@@ -123,8 +160,14 @@ async def lifespan(app: FastAPI):
         logger.warning("Serving with RANDOM weights — predictions are not meaningful.")
     logger.info("Model ready.")
 
+    if settings.monitoring_enabled and settings.drift_check_interval_s > 0:
+        state.drift_task = asyncio.create_task(_drift_loop(settings.drift_check_interval_s))
+        logger.info("Background drift checks every %ss.", settings.drift_check_interval_s)
+
     yield
 
+    if state.drift_task is not None:
+        state.drift_task.cancel()
     state.model = None
     m.MODEL_LOADED.set(0)
     logger.info("Service shutting down.")
@@ -274,6 +317,33 @@ async def metrics():
     return m.metrics_response()
 
 
+@app.post("/drift/check", responses={409: {"model": ErrorResponse}, 422: {"model": ErrorResponse}})
+async def drift_check(request: Request):
+    """Recompute drift against the reference now, update gauges, return the summary."""
+    settings = get_settings()
+    try:
+        summary = await run_in_threadpool(
+            monitoring.run_drift_check,
+            settings.reference_path,
+            settings.prediction_log_path,
+            settings.drift_min_samples,
+        )
+    except ValueError as exc:
+        raise APIError(409, "drift_unavailable", str(exc)) from exc
+
+    m.update_drift_metrics(summary)
+    state.last_drift = summary
+    return summary
+
+
+@app.get("/drift/status")
+async def drift_status():
+    """Return the most recent drift summary (or a hint if none computed yet)."""
+    if state.last_drift is None:
+        return {"status": "no_drift_check_run", "hint": "POST /drift/check after sending traffic."}
+    return state.last_drift
+
+
 @app.post(
     "/predict",
     response_model=PredictResponse,
@@ -296,6 +366,7 @@ async def predict(request: Request, file: UploadFile = File(...)):
     elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
 
     m.record_prediction(result["label"], result["confidence"])
+    _record_monitoring(img, result, getattr(request.state, "request_id", None))
     return PredictResponse(
         **result,
         filename=file.filename,
@@ -345,8 +416,9 @@ async def predict_batch_endpoint(request: Request, files: list[UploadFile] = Fil
             raise APIError(504, "inference_timeout", "Batch inference exceeded the time limit.") from exc
 
         m.INFERENCE_DURATION.labels(batch="batch").observe(time.perf_counter() - t0)
-        for (idx, fname, _), pred in zip(decoded, preds):
+        for (idx, fname, img), pred in zip(decoded, preds):
             m.record_prediction(pred["label"], pred["confidence"])
+            _record_monitoring(img, pred, getattr(request.state, "request_id", None))
             results[idx] = BatchItem(index=idx, filename=fname, prediction=Prediction(**pred))
 
     elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
