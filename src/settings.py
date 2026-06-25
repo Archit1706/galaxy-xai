@@ -21,7 +21,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- Model ---
+    # --- Model source ---
+    # When use_registry is True the service loads the model from the MLflow
+    # registry (the configured stage); otherwise it loads weights_path directly.
+    # On registry failure it falls back to weights_path if that file exists.
+    use_registry: bool = Field(default=False)
+    mlflow_tracking_uri: str = Field(default="", description="e.g. http://mlflow:5000")
+    registry_model_name: str = Field(default="galaxy-morphology-resnet18")
+    registry_stage: str = Field(default="Production")
+
     weights_path: str = Field(default=str(DEFAULT_WEIGHTS_PATH))
     device: str = Field(default="cpu", description="cpu or cuda")
     # If True, a missing weights file is a hard startup error (use in real deploys).
