@@ -11,7 +11,7 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.config import DEFAULT_WEIGHTS_PATH
+from src.config import DEFAULT_WEIGHTS_PATH, PRODUCTION_DATA_DIR, REFERENCE_DATA_DIR
 
 
 class Settings(BaseSettings):
@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     max_file_size_mb: float = Field(default=10.0, description="Max single image upload size.")
     max_batch_size: int = Field(default=32, description="Max images per /predict_batch call.")
     request_timeout_s: float = Field(default=30.0, description="Per-inference timeout.")
+
+    # --- Monitoring / drift (Phase 3) ---
+    monitoring_enabled: bool = Field(default=True, description="Log features+predictions per request.")
+    prediction_log_path: str = Field(default=str(PRODUCTION_DATA_DIR / "prediction_log.jsonl"))
+    reference_path: str = Field(default=str(REFERENCE_DATA_DIR / "reference.csv"))
+    drift_min_samples: int = Field(default=30, description="Min logged rows before drift is assessed.")
+    drift_check_interval_s: int = Field(
+        default=0, description="Background drift-check period in seconds (0 disables the loop)."
+    )
 
     # --- Server ---
     host: str = Field(default="0.0.0.0")
