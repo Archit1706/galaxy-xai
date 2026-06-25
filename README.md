@@ -39,7 +39,7 @@ drift, and automatically retrained + promoted through an evaluation gate.
 | 0 | Scaffold, model module, smoke test, CLI predict | ✅ done |
 | 1 | FastAPI service (`/predict` `/predict_batch` `/health` `/metrics`) + Docker | ✅ done |
 | 2 | MLflow tracking + registry (serve from registry) | ✅ done |
-| 3 | Evidently drift + Prometheus + Grafana | ⏳ |
+| 3 | Evidently drift + Prometheus + Grafana | ✅ done |
 | 4 | CI/CD eval gate + scheduled drift→retrain→promote | ⏳ |
 | 5 | Load test + polish + deploy | ⏳ |
 
@@ -81,6 +81,27 @@ python -m src.register_model --tracking-uri http://localhost:5000 --promote --st
 serving. Retraining (`python -m src.train`) logs runs and registers new versions;
 if the registry is empty or unreachable the service falls back to the local
 weights file automatically.
+
+### Monitoring & drift demo ("watch it spike")
+
+`docker compose up` also starts **Prometheus** (:9090) and **Grafana** (:3000,
+admin/admin) with a provisioned *Serving & Drift* dashboard. The service logs an
+interpretable feature vector (brightness, contrast, per-channel colour stats) +
+the prediction for every request; **Evidently** (PSI/KS) compares the live log to
+a reference built from the training distribution.
+
+```bash
+python -m src.build_reference --source synthetic --n 300   # baseline distribution
+python -m src.simulate_traffic --clean 60 --trigger        # -> drift_score ~0.0
+python -m src.simulate_traffic --shifted 60 --trigger      # -> drift_score spikes to ~0.9
+```
+
+`POST /drift/check` recomputes on demand; `GET /drift/status` returns the last
+summary. Drift is exported as Prometheus gauges (`galaxyserve_drift_score`,
+`galaxyserve_dataset_drift`, `galaxyserve_prediction_drift_detected`, …) and the
+Grafana panels turn red when a survey shift is detected. Point `build_reference`
+at Galaxy10 (`--source galaxy10`) and feed Galaxy Zoo Evo images to demo drift on
+the real cross-survey distribution shift.
 
 ## API
 
