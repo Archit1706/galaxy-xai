@@ -19,7 +19,8 @@ RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/c
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install ".[serve]"
+# serve = API stack; track = MLflow client so the service can load from the registry.
+RUN pip install ".[serve,track]"
 
 # ---------- runtime ----------
 FROM python:3.11-slim AS runtime
