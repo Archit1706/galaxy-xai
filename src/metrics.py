@@ -96,6 +96,55 @@ BUILD_INFO = Gauge(
 )
 
 
+# --- Drift metrics (Phase 3) ---------------------------------------------
+# Headline drift signal: share of monitored features whose live distribution
+# has drifted from the training reference (0..1). The retrain trigger (Phase 4)
+# fires when this crosses a threshold.
+DRIFT_SCORE = Gauge(
+    "galaxyserve_drift_score",
+    "Share of monitored features detected as drifted (0..1).",
+    registry=REGISTRY,
+)
+DATASET_DRIFT = Gauge(
+    "galaxyserve_dataset_drift",
+    "1 if Evidently flags overall dataset drift, else 0.",
+    registry=REGISTRY,
+)
+DRIFTED_FEATURES = Gauge(
+    "galaxyserve_drifted_features",
+    "Number of features detected as drifted.",
+    registry=REGISTRY,
+)
+PREDICTION_DRIFT = Gauge(
+    "galaxyserve_prediction_drift_detected",
+    "1 if the prediction (confidence/class) distribution has drifted, else 0.",
+    registry=REGISTRY,
+)
+DRIFT_REFERENCE_ROWS = Gauge(
+    "galaxyserve_drift_reference_rows", "Rows in the reference dataset.", registry=REGISTRY
+)
+DRIFT_CURRENT_ROWS = Gauge(
+    "galaxyserve_drift_current_rows", "Rows compared from the live log.", registry=REGISTRY
+)
+DRIFT_LAST_RUN = Gauge(
+    "galaxyserve_drift_last_run_timestamp",
+    "Unix timestamp of the last drift check.",
+    registry=REGISTRY,
+)
+
+
+def update_drift_metrics(summary: dict) -> None:
+    """Push a drift summary (from monitoring.compute_drift) into the gauges."""
+    DRIFT_SCORE.set(summary.get("share_of_drifted_columns", 0.0))
+    DATASET_DRIFT.set(1 if summary.get("dataset_drift") else 0)
+    DRIFTED_FEATURES.set(summary.get("number_of_drifted_columns", 0))
+    PREDICTION_DRIFT.set(1 if summary.get("prediction_drift_detected") else 0)
+    DRIFT_REFERENCE_ROWS.set(summary.get("reference_rows", 0))
+    DRIFT_CURRENT_ROWS.set(summary.get("current_rows", 0))
+    if "timestamp" in summary:
+        DRIFT_LAST_RUN.set(summary["timestamp"])
+
+
 def set_build_info(model_name: str, model_version: str, model_stage: str) -> None:
     BUILD_INFO.labels(
         version=__version__,
