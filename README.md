@@ -38,7 +38,7 @@ drift, and automatically retrained + promoted through an evaluation gate.
 |------|-------|-------|
 | 0 | Scaffold, model module, smoke test, CLI predict | ✅ done |
 | 1 | FastAPI service (`/predict` `/predict_batch` `/health` `/metrics`) + Docker | ✅ done |
-| 2 | MLflow tracking + registry (serve from registry) | ⏳ |
+| 2 | MLflow tracking + registry (serve from registry) | ✅ done |
 | 3 | Evidently drift + Prometheus + Grafana | ⏳ |
 | 4 | CI/CD eval gate + scheduled drift→retrain→promote | ⏳ |
 | 5 | Load test + polish + deploy | ⏳ |
@@ -59,11 +59,28 @@ uvicorn src.service:app --port 8000                  # run the API
 ### Docker
 
 ```bash
-docker compose up --build
+docker compose up --build      # starts MLflow (:5000) + the inference service (:8000)
 curl -F "file=@your_galaxy.png" http://localhost:8000/predict
 ```
 
-Interactive API docs: <http://localhost:8000/docs> · Metrics: <http://localhost:8000/metrics>
+Interactive API docs: <http://localhost:8000/docs> · Metrics: <http://localhost:8000/metrics> ·
+MLflow UI: <http://localhost:5000>
+
+### MLflow registry (serve from the registry)
+
+The service can load its model from the **MLflow Model Registry** instead of a
+file (`GALAXYSERVE_USE_REGISTRY=true`, the default in `docker-compose.yml`). Seed
+the registry from the existing trained checkpoint and promote it to Production:
+
+```bash
+# with an MLflow server running at :5000
+python -m src.register_model --tracking-uri http://localhost:5000 --promote --stage Production
+```
+
+`/health` then reports `model_stage: "Production"` and the registry version it is
+serving. Retraining (`python -m src.train`) logs runs and registers new versions;
+if the registry is empty or unreachable the service falls back to the local
+weights file automatically.
 
 ## API
 
