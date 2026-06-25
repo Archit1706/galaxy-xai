@@ -63,10 +63,34 @@ class AppState:
 state = AppState()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    settings = get_settings()
-    state.started_at = time.time()
+async def _load_model_for_serving(settings) -> tuple[object, bool]:
+    """Resolve the serving model: registry first (if configured), else weights file.
+
+    Returns ``(model, weights_loaded)``. Updates settings' model_* metadata in
+    place so /health and metrics reflect the actual source. Falls back to the
+    local file if the registry is configured but unreachable/empty.
+    """
+    from src.model import load_model
+
+    if settings.use_registry:
+        try:
+            from src.registry import load_model_from_registry
+
+            model, meta = await run_in_threadpool(
+                load_model_from_registry,
+                settings.registry_model_name,
+                settings.registry_stage,
+                settings.mlflow_tracking_uri or None,
+                settings.device,
+            )
+            settings.model_name = meta["model_name"]
+            settings.model_version = meta["model_version"]
+            settings.model_stage = meta["model_stage"]
+            logger.info("Serving from registry: %s v%s (%s)", meta["model_name"],
+                        meta["model_version"], meta["model_stage"])
+            return model, True
+        except Exception as exc:  # noqa: BLE001 — degrade gracefully to the file
+            logger.error("Registry load failed (%s); falling back to weights file.", exc)
 
     weights_path = settings.weights_path
     exists = Path(weights_path).exists()
@@ -74,15 +98,18 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(
             f"Required weights not found at {weights_path} (GALAXYSERVE_REQUIRE_WEIGHTS=true)."
         )
+    settings.model_stage = "local-file"
+    model = await run_in_threadpool(load_model, weights_path if exists else None, settings.device)
+    return model, exists
 
-    logger.info("Loading model (device=%s, weights=%s)...", settings.device, weights_path)
-    # load_model is sync/CPU-bound; run off the loop during startup.
-    from src.model import load_model
 
-    state.model = await run_in_threadpool(
-        load_model, weights_path if exists else None, settings.device
-    )
-    state.weights_loaded = exists
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    state.started_at = time.time()
+
+    logger.info("Loading model (device=%s, use_registry=%s)...", settings.device, settings.use_registry)
+    state.model, state.weights_loaded = await _load_model_for_serving(settings)
 
     # Warmup: a dummy forward pass so the first real request isn't slow.
     await run_in_threadpool(
@@ -90,9 +117,9 @@ async def lifespan(app: FastAPI):
     )
 
     m.MODEL_LOADED.set(1)
-    m.WEIGHTS_LOADED.set(1 if exists else 0)
+    m.WEIGHTS_LOADED.set(1 if state.weights_loaded else 0)
     m.set_build_info(settings.model_name, settings.model_version, settings.model_stage)
-    if not exists:
+    if not state.weights_loaded:
         logger.warning("Serving with RANDOM weights — predictions are not meaningful.")
     logger.info("Model ready.")
 
