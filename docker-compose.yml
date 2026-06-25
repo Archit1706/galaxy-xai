@@ -1,5 +1,5 @@
-# GalaxyServe stack. Phase 1 shipped the inference service; Phase 2 adds MLflow
-# (tracking + registry). Prometheus + Grafana (Phase 3) are added later.
+# GalaxyServe stack: inference service (Phase 1) + MLflow registry (Phase 2) +
+# Prometheus & Grafana monitoring with drift (Phase 3).
 
 services:
   mlflow:
@@ -51,6 +51,12 @@ services:
       GALAXYSERVE_DEVICE: cpu
       GALAXYSERVE_LOG_LEVEL: info
       GALAXYSERVE_MAX_BATCH_SIZE: "32"
+      # Monitoring / drift
+      GALAXYSERVE_MONITORING_ENABLED: "true"
+      GALAXYSERVE_REFERENCE_PATH: /app/data/reference/reference.csv
+      GALAXYSERVE_PREDICTION_LOG_PATH: /app/data/production/prediction_log.jsonl
+      GALAXYSERVE_DRIFT_CHECK_INTERVAL_S: "30"
+      GALAXYSERVE_DRIFT_MIN_SAMPLES: "30"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 30s
@@ -61,8 +67,44 @@ services:
     networks:
       - galaxynet
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - galaxynet
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - galaxynet
+
 volumes:
   mlflow_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   galaxynet:
