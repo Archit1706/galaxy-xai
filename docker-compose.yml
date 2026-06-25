@@ -1,0 +1,35 @@
+# GalaxyServe stack. Phase 1 ships the inference service; MLflow (Phase 2),
+# Prometheus + Grafana (Phase 3) are added to this file in later phases.
+
+services:
+  galaxyserve:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: galaxyserve:latest
+    container_name: galaxyserve
+    ports:
+      - "8000:8000"
+    volumes:
+      # Trained weights mounted read-only — not baked into the image.
+      - ./models:/app/models:ro
+      # Prediction/input logs land here (used by monitoring in Phase 3).
+      - ./data:/app/data
+    environment:
+      GALAXYSERVE_WEIGHTS_PATH: /app/models/resnet18_galaxy_best.pth
+      GALAXYSERVE_DEVICE: cpu
+      GALAXYSERVE_LOG_LEVEL: info
+      GALAXYSERVE_MAX_BATCH_SIZE: "32"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - galaxynet
+
+networks:
+  galaxynet:
+    driver: bridge
