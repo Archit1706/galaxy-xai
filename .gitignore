@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Model weights & data (tracked via DVC / fetched separately — see README)
+models/*.pth
+models/*.pt
+models/*.onnx
+data/reference/*
+data/production/*
+!data/reference/.gitkeep
+!data/production/.gitkeep
+
+# MLflow local store
+mlruns/
+mlflow.db
+mlartifacts/
+
+# Monitoring / logs
+logs/
+*.log
+prediction_log*.csv
+prediction_log*.jsonl
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Env
+.env
+
+# Local tooling config
+.claude/
