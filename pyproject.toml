@@ -34,8 +34,10 @@ serve = [
     "pydantic-settings>=2.2",
 ]
 # Experiment tracking + model registry (Phase 2)
+# Pinned <3 so the registry Stages API (Staging/Production) remains available;
+# MLflow 3 removed stages in favor of aliases.
 track = [
-    "mlflow>=2.12",
+    "mlflow>=2.12,<3",
 ]
 # Training / retraining (Phase 0+, full data path)
 train = [
