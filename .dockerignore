@@ -1,0 +1,35 @@
+# Keep the build context small and the image clean.
+.git
+.github
+.gitignore
+.gitattributes
+.dockerignore
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Big / irrelevant-to-runtime
+research/
+report.pdf
+*.ipynb
+mlruns/
+mlflow.db
+mlartifacts/
+data/
+load/
+monitoring/
+tests/
+
+# Weights are mounted at runtime, not baked into the image
+models/*.pth
+models/*.pt
+models/*.onnx
+
+# Local artifacts
+*.log
+test_galaxy.png
+.env
