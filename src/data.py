@@ -160,10 +160,17 @@ def build_loaders(
     batch_size: int = 64,
     seed: int = 42,
     num_workers: int = 0,
+    augment: bool = True,
 ) -> dict[str, DataLoader]:
-    """Build train/val/test DataLoaders with the standard transforms."""
+    """Build train/val/test DataLoaders.
+
+    ``augment`` toggles training-time augmentation. Disable it for the synthetic
+    smoke set, where rotation/flip would destroy the (orientation-defined) class
+    signal and inject variance.
+    """
     tr, va, te = make_splits(len(labels), seed=seed)
-    train_t, eval_t = get_train_transform(), get_eval_transform()
+    eval_t = get_eval_transform()
+    train_t = get_train_transform() if augment else eval_t
     g = torch.Generator().manual_seed(seed)
     return {
         "train": DataLoader(
