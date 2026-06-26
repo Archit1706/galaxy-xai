@@ -40,7 +40,7 @@ drift, and automatically retrained + promoted through an evaluation gate.
 | 1 | FastAPI service (`/predict` `/predict_batch` `/health` `/metrics`) + Docker | ✅ done |
 | 2 | MLflow tracking + registry (serve from registry) | ✅ done |
 | 3 | Evidently drift + Prometheus + Grafana | ✅ done |
-| 4 | CI/CD eval gate + scheduled drift→retrain→promote | ⏳ |
+| 4 | CI/CD eval gate + scheduled drift→retrain→promote | ✅ done |
 | 5 | Load test + polish + deploy | ⏳ |
 
 ## Quickstart
@@ -102,6 +102,27 @@ summary. Drift is exported as Prometheus gauges (`galaxyserve_drift_score`,
 Grafana panels turn red when a survey shift is detected. Point `build_reference`
 at Galaxy10 (`--source galaxy10`) and feed Galaxy Zoo Evo images to demo drift on
 the real cross-survey distribution shift.
+
+### CI/CD and the retraining loop
+
+Three GitHub Actions workflows in [`.github/workflows`](.github/workflows):
+
+- **`ci.yml`** (PRs + master): ruff lint → pytest → smoke-train (pipeline runs) →
+  **eval gate** (`src.eval_gate` fails the build if accuracy is below the floor).
+  A change that breaks the model can't be merged.
+- **`build.yml`** (master): build the image and push it to GHCR.
+- **`drift-retrain.yml`** (scheduled + manual): drift check → `src.retrain` trains
+  a challenger → `src.evaluate` → `src.promote` promotes it **only if it clears the
+  floor and beats the champion**, otherwise it is parked in Staging.
+
+```bash
+python -m src.eval_gate --floor 0.96                       # the gate
+python -m src.retrain --tracking-uri http://localhost:5000 # drift -> train -> promote
+python -m src.promote --challenger-version 7 --floor 0.96  # champion/challenger only
+```
+
+The champion/challenger rule means the service's Production model never regresses:
+a new version is served only when it is provably better.
 
 ## API
 
