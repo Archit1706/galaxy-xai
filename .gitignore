@@ -32,6 +32,12 @@ logs/
 prediction_log*.csv
 prediction_log*.jsonl
 
+# Load test output
+load/results*.csv
+load/results*.html
+load/*_stats*.csv
+load/*_failures.csv
+
 # Notebooks checkpoints
 .ipynb_checkpoints/
 
