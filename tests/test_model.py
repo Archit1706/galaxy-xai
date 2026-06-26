@@ -77,3 +77,15 @@ def test_predict_from_bytes(model):
     img.save(buf, format="PNG")
     result = predict_image(model, buf.getvalue(), device="cpu")
     assert result["label"] in CLASS_NAMES
+
+
+def test_eval_gate_passes_for_healthy_pipeline():
+    """A healthy training run clears the gate floor on the separable synthetic set.
+
+    This is the gate mechanism that, in CI, blocks merges whose model can't learn.
+    Kept light (few epochs/images, modest floor) so it's fast.
+    """
+    from src.eval_gate import run_gate
+
+    passed, accuracy = run_gate(floor=0.9, epochs=8, per_class=128, seed=42, device="cpu")
+    assert passed, f"eval gate failed: accuracy {accuracy:.3f} < 0.9"
