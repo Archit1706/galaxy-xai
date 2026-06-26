@@ -68,3 +68,45 @@ def test_register_promote_load_predict(mlflow_sqlite):
     with torch.no_grad():
         out = loaded(x)
     assert out.shape == (2, 2)
+
+
+def test_champion_challenger_promotion(mlflow_sqlite):
+    """A challenger reaches Production only if it clears the floor and beats the champion."""
+    from src.promote import evaluate_and_promote
+    from src.registry import configure_mlflow, get_stage_version, log_and_register, transition_stage
+
+    name = "cc-model"
+    floor = 0.9
+    configure_mlflow(mlflow_sqlite, experiment="cc-exp")
+
+    def register_with_accuracy(acc: float) -> str:
+        _, version = log_and_register(
+            build_model(pretrained=False),
+            params={"acc": acc},
+            metrics={"test_accuracy": acc},
+            model_name=name,
+            register=True,
+        )
+        return version
+
+    # Champion: v1 @ 0.92, promoted to Production.
+    champ = register_with_accuracy(0.92)
+    transition_stage(name, champ, stage="Production")
+
+    # Challenger that beats the champion and clears the floor -> promoted.
+    better = register_with_accuracy(0.96)
+    d1 = evaluate_and_promote(name, better, floor=floor, tracking_uri=mlflow_sqlite)
+    assert d1["promoted"] is True
+    assert str(get_stage_version(name, "Production").version) == str(better)
+
+    # Challenger below the new champion (0.96) -> not promoted, parked in Staging.
+    worse = register_with_accuracy(0.93)
+    d2 = evaluate_and_promote(name, worse, floor=floor, tracking_uri=mlflow_sqlite)
+    assert d2["promoted"] is False
+    assert str(get_stage_version(name, "Production").version) == str(better)
+
+    # Challenger below the absolute floor -> not promoted.
+    bad = register_with_accuracy(0.80)
+    d3 = evaluate_and_promote(name, bad, floor=floor, tracking_uri=mlflow_sqlite)
+    assert d3["promoted"] is False
+    assert "floor" in d3["reason"]
