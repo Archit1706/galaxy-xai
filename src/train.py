@@ -73,17 +73,27 @@ def run_training(args) -> tuple[str, str | None, dict]:
         images, labels = load_galaxy10_binary(max_per_class=args.max_per_class, seed=args.seed)
         pretrained = not args.no_pretrained
 
-    loaders = build_loaders(images, labels, batch_size=args.batch_size, seed=args.seed)
+    # Smoke uses a from-scratch ResNet on a tiny synthetic set: small batches keep
+    # BatchNorm running stats sane (large batches -> too few updates -> broken eval),
+    # no augmentation (it would erase the class signal), and no weight decay.
+    batch_size = 32 if args.smoke else args.batch_size
+    weight_decay = 0.0 if args.smoke else 1e-4
+    loaders = build_loaders(
+        images, labels, batch_size=batch_size, seed=args.seed, augment=not args.smoke
+    )
 
     model = build_model(pretrained=pretrained)
-    freeze_backbone(model)
+    # Freezing early layers only helps when they hold pretrained features; with a
+    # from-scratch backbone (smoke), train everything so the model can learn.
+    if pretrained:
+        freeze_backbone(model)
     model.to(device)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=args.lr,
-        weight_decay=1e-4,
+        weight_decay=weight_decay,
     )
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5)
 
@@ -91,10 +101,10 @@ def run_training(args) -> tuple[str, str | None, dict]:
         "architecture": "resnet18",
         "pretrained": pretrained,
         "epochs": args.epochs,
-        "batch_size": args.batch_size,
+        "batch_size": batch_size,
         "lr": args.lr,
         "optimizer": "adam",
-        "weight_decay": 1e-4,
+        "weight_decay": weight_decay,
         "n_samples": len(labels),
         "smoke": args.smoke,
         "seed": args.seed,
@@ -122,8 +132,7 @@ def run_training(args) -> tuple[str, str | None, dict]:
     logger.info("Test metrics: %s", test_metrics)
 
     # Log per-epoch loss curves as stepped metrics, then the run + model.
-    with mlflow.start_run(run_name=args.run_name) as run:
-        run_id = run.info.run_id
+    with mlflow.start_run(run_name=args.run_name):
         mlflow.log_params(params)
         for step, (tr, va) in enumerate(history):
             mlflow.log_metric("train_loss", tr, step=step)
@@ -158,8 +167,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--no-pretrained", action="store_true", help="Skip ImageNet backbone download.")
     p.add_argument("--smoke", action="store_true", help="Fast synthetic-data run for CI.")
-    p.add_argument("--smoke-per-class", type=int, default=48)
-    p.add_argument("--epochs-smoke", type=int, default=2)
+    p.add_argument("--smoke-per-class", type=int, default=128)
+    p.add_argument("--epochs-smoke", type=int, default=6)
     p.add_argument("--tracking-uri", default=None)
     p.add_argument("--experiment", default=None)
     p.add_argument("--run-name", default=None)
