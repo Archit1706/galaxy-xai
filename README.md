@@ -1,7 +1,7 @@
 # GalaxyServe
 
-[![CI](https://github.com/Archit1706/galaxy-xai/actions/workflows/ci.yml/badge.svg)](https://github.com/Archit1706/galaxy-xai/actions/workflows/ci.yml)
-[![Build image](https://github.com/Archit1706/galaxy-xai/actions/workflows/build.yml/badge.svg)](https://github.com/Archit1706/galaxy-xai/actions/workflows/build.yml)
+[![CI](https://github.com/Archit1706/galaxy-serve/actions/workflows/ci.yml/badge.svg)](https://github.com/Archit1706/galaxy-serve/actions/workflows/ci.yml)
+[![Build image](https://github.com/Archit1706/galaxy-serve/actions/workflows/build.yml/badge.svg)](https://github.com/Archit1706/galaxy-serve/actions/workflows/build.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](#)
 
@@ -36,17 +36,6 @@ drift, and automatically retrained + promoted through an evaluation gate.
        │                                              │
        └──────────── Evidently (PSI/KS drift) ◄───────┘
 ```
-
-## Status (built phase by phase)
-
-| Phase | Scope | State |
-|------|-------|-------|
-| 0 | Scaffold, model module, smoke test, CLI predict | ✅ done |
-| 1 | FastAPI service (`/predict` `/predict_batch` `/health` `/metrics`) + Docker | ✅ done |
-| 2 | MLflow tracking + registry (serve from registry) | ✅ done |
-| 3 | Evidently drift + Prometheus + Grafana | ✅ done |
-| 4 | CI/CD eval gate + scheduled drift→retrain→promote | ✅ done |
-| 5 | Load test + polish + deploy docs | ✅ done |
 
 ## Metrics
 
@@ -215,7 +204,3 @@ monitoring/  prometheus config + grafana dashboards
 load/        locust load test
 research/    original notebooks, report, and research README
 ```
-
-## Authors
-
-Archit Rathod · Gargi Sathe — University of Illinois Chicago.
