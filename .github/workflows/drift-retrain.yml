@@ -1,0 +1,58 @@
+name: Drift retrain
+
+# Scheduled (and manually dispatchable) drift check -> retrain challenger ->
+# evaluate -> promote only if it beats the champion.
+#
+# Real runs target the deployed MLflow registry + production prediction log via
+# the MLFLOW_TRACKING_URI repository variable. With none configured (or via a
+# manual dispatch with force=true) it runs self-contained against a local sqlite
+# registry in smoke mode to demonstrate the mechanism end to end.
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Retrain regardless of drift"
+        type: boolean
+        default: true
+      smoke:
+        description: "Smoke training (synthetic, fast)"
+        type: boolean
+        default: true
+      drift_threshold:
+        description: "Drift share threshold to trigger retrain"
+        default: "0.3"
+
+jobs:
+  drift-retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies (CPU torch)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install ".[track,monitor,train]"
+
+      - name: Resolve tracking URI
+        id: cfg
+        run: |
+          URI="${{ vars.MLFLOW_TRACKING_URI }}"
+          if [ -z "$URI" ]; then URI="sqlite:///mlflow_retrain.db"; fi
+          echo "uri=$URI" >> "$GITHUB_OUTPUT"
+
+      - name: Drift check, retrain, and promote
+        run: |
+          FLAGS="--tracking-uri ${{ steps.cfg.outputs.uri }} --drift-threshold ${{ github.event.inputs.drift_threshold || '0.3' }}"
+          if [ "${{ github.event.inputs.smoke || 'true' }}" = "true" ]; then FLAGS="$FLAGS --smoke"; fi
+          if [ "${{ github.event.inputs.force || 'true' }}" = "true" ]; then FLAGS="$FLAGS --force"; fi
+          echo "retrain flags: $FLAGS"
+          python -m src.retrain $FLAGS
