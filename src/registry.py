@@ -105,7 +105,7 @@ def transition_stage(
     logger.info("Transitioned %s v%s -> %s", model_name, version, stage)
 
 
-def get_stage_version(model_name: str, stage: str = "Production") -> "mlflow.entities.model_registry.ModelVersion | None":
+def get_stage_version(model_name: str, stage: str = "Production") -> mlflow.entities.model_registry.ModelVersion | None:
     """Return the ModelVersion currently in ``stage``, or None."""
     client = MlflowClient()
     versions = client.get_latest_versions(model_name, stages=[stage])
