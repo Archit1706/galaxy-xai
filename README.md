@@ -21,6 +21,11 @@ drift, and automatically retrained + promoted through an evaluation gate.
 
 ## Architecture
 
+![GalaxyServe architecture](docs/architecture.png)
+
+<details>
+<summary>Text version</summary>
+
 ```
                  ┌─────────────── GitHub Actions (CI/CD) ───────────────┐
                  │  lint → test → train-smoke → EVAL GATE → build image  │
@@ -36,6 +41,8 @@ drift, and automatically retrained + promoted through an evaluation gate.
        │                                              │
        └──────────── Evidently (PSI/KS drift) ◄───────┘
 ```
+
+</details>
 
 ## Metrics
 
