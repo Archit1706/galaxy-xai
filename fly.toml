@@ -1,0 +1,37 @@
+# Fly.io deployment for the GalaxyServe inference service.
+# Usage: `fly launch --no-deploy` (once) then `fly deploy`.
+# See the README "Deployment" section for how to provide the model.
+
+app = "galaxyserve"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  GALAXYSERVE_DEVICE = "cpu"
+  GALAXYSERVE_LOG_LEVEL = "info"
+  GALAXYSERVE_MONITORING_ENABLED = "true"
+  # To serve from a hosted registry instead of a baked-in file, set these
+  # (e.g. via `fly secrets set`): GALAXYSERVE_USE_REGISTRY=true and
+  # GALAXYSERVE_MLFLOW_TRACKING_URI=https://your-mlflow-host
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.checks]
+    [http_service.checks.health]
+      method = "get"
+      path = "/health"
+      interval = "30s"
+      timeout = "5s"
+      grace_period = "40s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024
