@@ -1,5 +1,10 @@
 # GalaxyServe
 
+[![CI](https://github.com/Archit1706/galaxy-xai/actions/workflows/ci.yml/badge.svg)](https://github.com/Archit1706/galaxy-xai/actions/workflows/ci.yml)
+[![Build image](https://github.com/Archit1706/galaxy-xai/actions/workflows/build.yml/badge.svg)](https://github.com/Archit1706/galaxy-xai/actions/workflows/build.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](#)
+
 **Production MLOps loop for a galaxy morphology classifier.**
 
 GalaxyServe takes a trained ResNet-18 that classifies galaxies as **Smooth** vs
@@ -41,7 +46,27 @@ drift, and automatically retrained + promoted through an evaluation gate.
 | 2 | MLflow tracking + registry (serve from registry) | ✅ done |
 | 3 | Evidently drift + Prometheus + Grafana | ✅ done |
 | 4 | CI/CD eval gate + scheduled drift→retrain→promote | ✅ done |
-| 5 | Load test + polish + deploy | ⏳ |
+| 5 | Load test + polish + deploy docs | ✅ done |
+
+## Metrics
+
+Measured locally (Docker, **CPU-only**, single instance) — Locust, synthetic galaxy
+payloads. Numbers are honest for CPU inference; a GPU or horizontal scaling (the
+Kubernetes/HPA stretch) lifts the throughput ceiling.
+
+| Metric | Value | Notes |
+|---|---|---|
+| Throughput | **~25 req/s** sustained | CPU inference ceiling (single instance) |
+| Latency p50 / p95 / p99 | **77 / 140 / 190 ms** | `/predict`, 4 concurrent users |
+| Single request (unloaded) | **~25 ms** | one image, warm model |
+| Errors under load | **0%** | 1024 requests, 20 concurrent, 0 failures |
+| Eval gate | **blocks < accuracy floor** (0.96 default) | fails CI; configurable |
+| Drift detection | **PSI/KS**, share threshold | demo: clean 0.0 → shifted **0.9** |
+| Model accuracy | **96.1%** test (ResNet-18, Galaxy10) | from the research notebooks |
+| Tests | **25 passing** | API contract, registry, drift, promotion, eval gate |
+| Image size | **~1.6 GB** | full CPU PyTorch; ONNX-runtime variant could shrink it |
+
+Reproduce: `locust -f load/locustfile.py --headless -u 20 -r 10 -t 30s --host http://localhost:8000`
 
 ## Quickstart
 
@@ -144,6 +169,33 @@ $ curl -s -F "file=@galaxy.png" http://localhost:8000/predict
   "filename": "galaxy.png", "inference_ms": 25.9, "model_version": "local"
 }
 ```
+
+## Load testing
+
+```bash
+pip install -e ".[load]"
+locust -f load/locustfile.py --host http://localhost:8000          # web UI at :8089
+locust -f load/locustfile.py --headless -u 20 -r 10 -t 30s \      # headless + CSV
+       --host http://localhost:8000 --csv load/results
+```
+
+The locustfile sends synthetic galaxy images to `/predict` (with a smaller share of
+`/predict_batch` and `/health`). See the [metrics table](#metrics) for results.
+
+## Deployment
+
+The published image (`ghcr.io/archit1706/galaxyserve`, built by `build.yml`) runs
+anywhere that takes a container. A [`fly.toml`](fly.toml) is included for Fly.io:
+
+```bash
+fly launch --no-deploy          # once, to create the app
+fly deploy                      # build/push and run
+```
+
+The service needs a model: either bake `models/resnet18_galaxy_best.pth` into the
+image (drop it in before `fly deploy`) or set `GALAXYSERVE_USE_REGISTRY=true` +
+`GALAXYSERVE_MLFLOW_TRACKING_URI` to load from a hosted MLflow registry. With
+neither it starts on random weights (health reports `weights_loaded: false`).
 
 ## Tech stack
 
