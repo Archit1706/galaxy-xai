@@ -104,7 +104,7 @@ def build_reference_dataframe(
 ) -> pd.DataFrame:
     """Build a reference DataFrame (features + predictions) from images."""
     rows = []
-    for img, pred in zip(images, predictions):
+    for img, pred in zip(images, predictions, strict=True):
         rows.append(
             {
                 **extract_features(img),
