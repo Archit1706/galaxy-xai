@@ -33,9 +33,8 @@ from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
-from src import __version__
+from src import __version__, monitoring
 from src import metrics as m
-from src import monitoring
 from src.model import load_image, predict_batch, predict_image
 from src.schemas import (
     BatchItem,
@@ -416,7 +415,7 @@ async def predict_batch_endpoint(request: Request, files: list[UploadFile] = Fil
             raise APIError(504, "inference_timeout", "Batch inference exceeded the time limit.") from exc
 
         m.INFERENCE_DURATION.labels(batch="batch").observe(time.perf_counter() - t0)
-        for (idx, fname, img), pred in zip(decoded, preds):
+        for (idx, fname, img), pred in zip(decoded, preds, strict=True):
             m.record_prediction(pred["label"], pred["confidence"])
             _record_monitoring(img, pred, getattr(request.state, "request_id", None))
             results[idx] = BatchItem(index=idx, filename=fname, prediction=Prediction(**pred))
