@@ -65,11 +65,12 @@ def main() -> None:
     p.add_argument("--epochs", type=int, default=None)
     args = p.parse_args()
 
-    from src.settings import get_settings
+    # Default paths come from the monitoring module (src.config-backed) so this
+    # batch job doesn't depend on the web service's settings layer (pydantic-settings).
+    from src.monitoring import DEFAULT_LOG_PATH, DEFAULT_REFERENCE_PATH
 
-    settings = get_settings()
-    reference_path = args.reference_path or settings.reference_path
-    log_path = args.log_path or settings.prediction_log_path
+    reference_path = args.reference_path or str(DEFAULT_REFERENCE_PATH)
+    log_path = args.log_path or str(DEFAULT_LOG_PATH)
 
     configure_mlflow(args.tracking_uri)
 
