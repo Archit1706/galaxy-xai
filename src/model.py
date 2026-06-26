@@ -139,17 +139,17 @@ def predict_image(
         "class_id": class_id,
         "label": CLASS_NAMES[class_id],
         "confidence": float(probs[class_id].item()),
-        "probabilities": {name: float(p) for name, p in zip(CLASS_NAMES, probs.tolist())},
+        "probabilities": {name: float(p) for name, p in zip(CLASS_NAMES, probs.tolist(), strict=True)},
     }
 
 
-def _format_prediction(probs_row: "torch.Tensor") -> dict:
+def _format_prediction(probs_row: torch.Tensor) -> dict:
     class_id = int(probs_row.argmax().item())
     return {
         "class_id": class_id,
         "label": CLASS_NAMES[class_id],
         "confidence": float(probs_row[class_id].item()),
-        "probabilities": {name: float(p) for name, p in zip(CLASS_NAMES, probs_row.tolist())},
+        "probabilities": {name: float(p) for name, p in zip(CLASS_NAMES, probs_row.tolist(), strict=True)},
     }
 
 
